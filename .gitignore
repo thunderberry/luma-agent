@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.runtime/
+.env
+.env.*
+.runtime/oauth/gmail-oauth-client.json
+.runtime/oauth/gmail-token.json
+*.log
+.DS_Store
