@@ -10,7 +10,7 @@ export const FetchLumaEventResponseSchema = z.object({
   title: z.string().optional(),
   start_at: z.string().optional(),
   end_at: z.string().optional(),
-  slug: z.string().optional(),
+  url: z.string().url().optional(),
   city: z.string().optional(),
   host_names: z.array(z.string()),
   waitlist: z.string().nullable().optional(),

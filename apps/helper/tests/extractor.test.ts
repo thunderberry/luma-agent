@@ -89,7 +89,7 @@ describe('helper translation', () => {
     expect(result.title).toBe('AI Founder Breakfast');
     expect(result.start_at).toBe('2026-04-05T16:30:00.000Z');
     expect(result.end_at).toBe('2026-04-05T18:00:00.000Z');
-    expect(result.slug).toBe('ai-founder-breakfast');
+    expect(result.url).toBe('https://lu.ma/ai-founder-breakfast');
     expect(result.city).toBe('San Francisco');
     expect(result.host_names).toEqual(['Founders Bay']);
     expect(result.waitlist).toBe('enabled');

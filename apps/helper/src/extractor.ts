@@ -8,7 +8,7 @@ type ExtractedStructuredFacts = Pick<
   | 'title'
   | 'start_at'
   | 'end_at'
-  | 'slug'
+  | 'url'
   | 'city'
   | 'host_names'
   | 'waitlist'
@@ -140,6 +140,23 @@ function extractWaitlist(payload: Record<string, unknown>): string | null | unde
   return null;
 }
 
+function extractEventUrl(value: unknown): string | undefined {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  try {
+    return new URL(trimmed).toString();
+  } catch {
+    return `https://lu.ma/${trimmed.replace(/^\/+/, '')}`;
+  }
+}
+
 export function extractStructuredPageDataFromHtml(html: string): ExtractedStructuredFacts | undefined {
   const payload = parseNextDataPayload(html);
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
@@ -188,8 +205,9 @@ export function extractStructuredPageDataFromHtml(html: string): ExtractedStruct
   if (typeof event?.end_at === 'string' && event.end_at.trim()) {
     extracted.end_at = event.end_at.trim();
   }
-  if (typeof event?.url === 'string' && event.url.trim()) {
-    extracted.slug = event.url.trim();
+  const eventUrl = extractEventUrl(event?.url);
+  if (eventUrl) {
+    extracted.url = eventUrl;
   }
   if (typeof geoAddressInfo?.city === 'string' && geoAddressInfo.city.trim()) {
     extracted.city = geoAddressInfo.city.trim();
