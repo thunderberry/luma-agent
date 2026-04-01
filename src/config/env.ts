@@ -1,8 +1,5 @@
 import path from 'node:path';
 
-export const DEFAULT_OUTPUT_DIR =
-  '/Users/kevinrochowski/Library/Mobile Documents/iCloud~md~obsidian/Documents/Obsidian Core/Integrations/Luma';
-
 export const DEFAULT_GMAIL_QUERY =
   'from:(lu.ma OR luma-mail.com) newer_than:90d';
 
@@ -46,7 +43,8 @@ export function loadConfig(
   cwd = process.cwd(),
 ): AppConfig {
   const repoRoot = path.resolve(env.LUMA_REPO_ROOT ?? cwd);
-  const outputDir = path.resolve(env.LUMA_OUTPUT_DIR ?? DEFAULT_OUTPUT_DIR);
+  const defaultOutputDir = path.join(repoRoot, '.runtime', 'output');
+  const outputDir = path.resolve(env.LUMA_OUTPUT_DIR ?? defaultOutputDir);
 
   const runtimeRoot = path.join(repoRoot, '.runtime');
   const runtimeOAuthDir = path.join(runtimeRoot, 'oauth');

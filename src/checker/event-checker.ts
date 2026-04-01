@@ -1,137 +1,75 @@
 import path from 'node:path';
 
-import { chromium, type Page } from 'playwright';
-
 import type { AppConfig } from '../config/env.js';
 import { classifyStatus } from '../classifier/status-classifier.js';
+import { fetchEventPageFacts } from './http-event-extractor.js';
 import type { EventCheckResult, InviteLink } from '../types/index.js';
 import { isoNow } from '../util/date.js';
 import { PathPolicy } from '../util/path-policy.js';
 import { safeWriteJsonAtomic } from '../util/safe-fs.js';
-import { buildChromiumLaunchOptions } from './headless-policy.js';
-
-async function extractStartDate(page: Page): Promise<string | undefined> {
-  const count = await page.locator('time[datetime]').count();
-  if (count > 0) {
-    const value = await page.locator('time[datetime]').first().getAttribute('datetime');
-    if (value) {
-      const parsed = new Date(value);
-      if (!Number.isNaN(parsed.getTime())) {
-        return parsed.toISOString();
-      }
-    }
-  }
-
-  const jsonLdScripts = await page
-    .locator('script[type="application/ld+json"]')
-    .allTextContents();
-
-  for (const scriptText of jsonLdScripts) {
-    try {
-      const parsed = JSON.parse(scriptText) as unknown;
-      const extracted = findStartDate(parsed);
-      if (extracted) {
-        return extracted;
-      }
-    } catch {
-      continue;
-    }
-  }
-
-  return undefined;
-}
-
-function findStartDate(node: unknown): string | undefined {
-  if (!node || typeof node !== 'object') {
-    return undefined;
-  }
-
-  if (Array.isArray(node)) {
-    for (const item of node) {
-      const candidate = findStartDate(item);
-      if (candidate) {
-        return candidate;
-      }
-    }
-    return undefined;
-  }
-
-  const objectNode = node as Record<string, unknown>;
-  const startDate = objectNode.startDate;
-  if (typeof startDate === 'string') {
-    const parsed = new Date(startDate);
-    if (!Number.isNaN(parsed.getTime())) {
-      return parsed.toISOString();
-    }
-  }
-
-  for (const value of Object.values(objectNode)) {
-    const candidate = findStartDate(value);
-    if (candidate) {
-      return candidate;
-    }
-  }
-
-  return undefined;
-}
-
-async function extractTitle(page: Page): Promise<string | undefined> {
-  const h1Count = await page.locator('h1').count();
-  if (h1Count > 0) {
-    const h1 = await page.locator('h1').first().innerText();
-    const trimmed = h1.trim();
-    if (trimmed) {
-      return trimmed;
-    }
-  }
-
-  const title = await page.title();
-  return title.trim() || undefined;
-}
-
-async function extractCtaTexts(page: Page): Promise<string[]> {
-  const raw = await page.locator('button, [role="button"], a').allInnerTexts();
-  const cleaned = raw.map((item) => item.trim()).filter(Boolean);
-  return cleaned.slice(0, 150);
-}
 
 async function checkSingleEvent(
   invite: InviteLink,
-  page: Page,
   timeoutMs: number,
 ): Promise<EventCheckResult> {
   const checkedAt = isoNow();
 
   try {
-    await page.goto(invite.rawUrl, {
-      waitUntil: 'domcontentloaded',
-      timeout: timeoutMs,
+    const pageFacts = await fetchEventPageFacts(invite.rawUrl, timeoutMs);
+    const classified = classifyStatus({
+      pageText: pageFacts.pageText,
+      ctaTexts: pageFacts.ctaTexts,
     });
-
-    await page.waitForTimeout(1000);
-
-    const [title, startsAt, ctaTexts] = await Promise.all([
-      extractTitle(page),
-      extractStartDate(page),
-      extractCtaTexts(page),
-    ]);
-
-    const pageText = await page.locator('body').innerText().catch(() => '');
-    const classified = classifyStatus({ pageText, ctaTexts });
 
     const result: EventCheckResult = {
       canonicalUrl: invite.canonicalUrl,
       sourceUrl: invite.rawUrl,
-      finalUrl: page.url(),
+      finalUrl: pageFacts.finalUrl,
       status: classified.status,
       matchedSignals: classified.matchedSignals,
       checkedAt,
+      priceType: pageFacts.priceType ?? 'unknown',
     };
+
+    const title = pageFacts.title ?? invite.emailFacts?.titleHint ?? invite.subject;
     if (title) {
       result.title = title;
     }
+    const startsAt = pageFacts.startsAt ?? invite.emailFacts?.startsAt;
     if (startsAt) {
       result.startsAt = startsAt;
+    }
+    const organizerName = pageFacts.organizerName ?? invite.emailFacts?.organizerHint;
+    if (organizerName) {
+      result.organizerName = organizerName;
+    }
+    if (pageFacts.priceText) {
+      result.priceText = pageFacts.priceText;
+    }
+    const locationType = pageFacts.locationType ?? invite.emailFacts?.locationType;
+    if (locationType) {
+      result.locationType = locationType;
+    }
+    const locationText = pageFacts.locationText ?? invite.emailFacts?.locationText;
+    if (locationText) {
+      result.locationText = locationText;
+    }
+    const venueName = pageFacts.venueName ?? invite.emailFacts?.venueName;
+    if (venueName) {
+      result.venueName = venueName;
+    }
+    const city = pageFacts.city ?? invite.emailFacts?.city;
+    if (city) {
+      result.city = city;
+    }
+    if (pageFacts.descriptionExcerpt) {
+      result.descriptionExcerpt = pageFacts.descriptionExcerpt;
+    }
+    if (pageFacts.popularitySignals.length > 0) {
+      result.popularitySignals = pageFacts.popularitySignals;
+    }
+    if (invite.emailFacts) {
+      result.emailFacts = invite.emailFacts;
     }
 
     return result;
@@ -145,10 +83,33 @@ async function checkSingleEvent(
       checkedAt,
       error: message,
     };
-    const finalUrl = page.url();
-    if (finalUrl) {
-      result.finalUrl = finalUrl;
+
+    const title = invite.emailFacts?.titleHint ?? invite.subject;
+    if (title) {
+      result.title = title;
     }
+    if (invite.emailFacts?.startsAt) {
+      result.startsAt = invite.emailFacts.startsAt;
+    }
+    if (invite.emailFacts?.organizerHint) {
+      result.organizerName = invite.emailFacts.organizerHint;
+    }
+    if (invite.emailFacts?.locationType) {
+      result.locationType = invite.emailFacts.locationType;
+    }
+    if (invite.emailFacts?.locationText) {
+      result.locationText = invite.emailFacts.locationText;
+    }
+    if (invite.emailFacts?.venueName) {
+      result.venueName = invite.emailFacts.venueName;
+    }
+    if (invite.emailFacts?.city) {
+      result.city = invite.emailFacts.city;
+    }
+    if (invite.emailFacts) {
+      result.emailFacts = invite.emailFacts;
+    }
+
     return result;
   }
 }
@@ -188,32 +149,9 @@ export async function checkEventStatuses(
     return [];
   }
 
-  const browser = await chromium.launch(buildChromiumLaunchOptions());
-
-  try {
-    const context = await browser.newContext({
-      acceptDownloads: false,
-      timezoneId: config.timezone,
-    });
-
-    const results = await mapWithConcurrency(
-      invites,
-      config.checkConcurrency,
-      async (invite) => {
-        const page = await context.newPage();
-        try {
-          return await checkSingleEvent(invite, page, config.checkTimeoutMs);
-        } finally {
-          await page.close();
-        }
-      },
-    );
-
-    await context.close();
-    return results;
-  } finally {
-    await browser.close();
-  }
+  return mapWithConcurrency(invites, config.checkConcurrency, (invite) =>
+    checkSingleEvent(invite, config.checkTimeoutMs),
+  );
 }
 
 export async function checkEventStatusesAndPersist(

@@ -19,6 +19,10 @@ function decodeHtmlEntities(value: string): string {
     .replaceAll('&#39;', "'");
 }
 
+function stripTags(value: string): string {
+  return value.replace(/<[^>]+>/g, ' ');
+}
+
 function stripTrailingJunk(value: string): string {
   return value.replace(/[),.;!?]+$/g, '').trim();
 }
@@ -136,6 +140,24 @@ export function extractLumaUrlsFromMessagePart(
 
 export function canonicalizeInviteUrl(rawUrl: string): string | null {
   return toCanonicalUrl(rawUrl);
+}
+
+export function extractPlainTextFromMessagePart(
+  payload: gmail_v1.Schema$MessagePart | undefined,
+): string {
+  const textBodies: string[] = [];
+  const htmlBodies: string[] = [];
+  collectPartBodies(payload, textBodies, htmlBodies);
+
+  const textContent = textBodies.join('\n').trim();
+  if (textContent) {
+    return textContent;
+  }
+
+  return decodeHtmlEntities(stripTags(htmlBodies.join('\n')))
+    .replace(/\s+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
 }
 
 export function dedupeInvites(invites: InviteLink[]): InviteLink[] {

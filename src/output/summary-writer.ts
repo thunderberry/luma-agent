@@ -46,6 +46,12 @@ function formatStartsAt(startsAt: string | undefined): string {
   return parsed.toISOString();
 }
 
+function formatLocation(event: EventCheckResult): string {
+  return [event.venueName, event.city].filter(Boolean).join(', ')
+    || event.locationText
+    || 'unknown location';
+}
+
 function toMarkdown(summary: DailySummary): string {
   const lines: string[] = [];
 
@@ -86,6 +92,27 @@ function toMarkdown(summary: DailySummary): string {
       lines.push(
         `- [${title}](${finalUrl}) | starts: ${formatStartsAt(event.startsAt)}${signalSuffix}${errorSuffix}`,
       );
+      lines.push(
+        `  price: ${event.priceType ?? 'unknown'}${event.priceText ? ` (${event.priceText})` : ''} | location: ${formatLocation(event)} | organizer: ${event.organizerName ?? 'unknown'}`,
+      );
+      if (event.descriptionExcerpt) {
+        lines.push(`  details: ${event.descriptionExcerpt}`);
+      }
+      if (event.popularitySignals && event.popularitySignals.length > 0) {
+        lines.push(`  popularity: ${event.popularitySignals.join('; ')}`);
+      }
+      if (event.emailFacts) {
+        const emailBits = [
+          event.emailFacts.sender,
+          event.emailFacts.snippet,
+          event.emailFacts.inviteSignals.length > 0
+            ? `signals: ${event.emailFacts.inviteSignals.join(', ')}`
+            : undefined,
+        ].filter(Boolean);
+        if (emailBits.length > 0) {
+          lines.push(`  email: ${emailBits.join(' | ')}`);
+        }
+      }
     }
 
     lines.push('');

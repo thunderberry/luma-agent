@@ -1,0 +1,19 @@
+{
+  "name": "@luma-agent/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "sync:gmail": "npm run build --silent && node dist/src/index.js sync:gmail",
+    "refresh:events": "npm run build --silent && node dist/src/index.js refresh:events",
+    "render:content": "npm run build --silent && node dist/src/index.js render:content",
+    "report:upcoming": "npm run build --silent && node dist/src/index.js report:upcoming",
+    "run:daily": "npm run build --silent && node dist/src/index.js run:daily"
+  },
+  "dependencies": {
+    "@luma-agent/shared": "file:../../packages/shared",
+    "googleapis": "^157.0.0"
+  }
+}

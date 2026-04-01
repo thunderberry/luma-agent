@@ -7,8 +7,10 @@ import { isoNow } from '../util/date.js';
 import { PathPolicy } from '../util/path-policy.js';
 import { safeWriteJsonAtomic } from '../util/safe-fs.js';
 import { getAuthorizedGmailClient } from './auth.js';
+import { extractEmailFacts } from './email-facts.js';
 import {
   canonicalizeInviteUrl,
+  extractPlainTextFromMessagePart,
   dedupeInvites,
   extractLumaUrlsFromMessagePart,
 } from './link-parser.js';
@@ -82,8 +84,17 @@ export async function fetchInviteLinks(
 
     const receivedAtHeader = getHeaderValue(headers, 'Date');
     const subject = getHeaderValue(headers, 'Subject');
+    const sender = getHeaderValue(headers, 'From');
 
     const receivedAt = parseReceivedAt(receivedAtHeader);
+    const bodyText = extractPlainTextFromMessagePart(payload);
+    const emailFacts = extractEmailFacts({
+      bodyText,
+      subject,
+      sender,
+      snippet: message.data.snippet ?? undefined,
+      receivedAt,
+    });
 
     const urls = extractLumaUrlsFromMessagePart(payload);
 
@@ -104,6 +115,21 @@ export async function fetchInviteLinks(
       }
       if (subject) {
         invite.subject = subject;
+      }
+      if (sender) {
+        invite.sender = sender;
+      }
+      if (message.data.snippet) {
+        invite.snippet = message.data.snippet;
+      }
+      if (
+        emailFacts.titleHint ||
+        emailFacts.organizerHint ||
+        emailFacts.startsAt ||
+        emailFacts.locationText ||
+        emailFacts.inviteSignals.length > 0
+      ) {
+        invite.emailFacts = emailFacts;
       }
       invites.push(invite);
     }

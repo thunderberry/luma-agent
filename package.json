@@ -1,20 +1,21 @@
 {
   "name": "luma-agent",
   "version": "0.1.0",
-  "description": "Local-only Luma invite monitor with strict headless checks and scoped filesystem access",
+  "description": "Lean Luma event evaluation monorepo with a secure MCP helper and local cache",
   "type": "module",
   "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run",
-    "dev": "tsx src/cli/index.ts",
-    "fetch-invites": "npm run build --silent && node dist/src/cli/index.js fetch-invites",
-    "check-events": "npm run build --silent && node dist/src/cli/index.js check-events",
-    "summarize": "npm run build --silent && node dist/src/cli/index.js summarize",
-    "run-daily": "npm run build --silent && node dist/src/cli/index.js run-daily",
-    "auth:gmail": "npm run build --silent && node dist/src/cli/index.js auth-gmail",
-    "playwright:install": "playwright install chromium"
+    "build": "npm run build --workspace @luma-agent/shared && npm run build --workspace @luma-agent/helper && npm run build --workspace @luma-agent/cli",
+    "test": "npm run test --workspace @luma-agent/helper && npm run test --workspace @luma-agent/cli",
+    "sync:gmail": "npm run sync:gmail --workspace @luma-agent/cli",
+    "refresh:events": "npm run refresh:events --workspace @luma-agent/cli",
+    "render:content": "npm run render:content --workspace @luma-agent/cli",
+    "report:upcoming": "npm run report:upcoming --workspace @luma-agent/cli",
+    "run:daily": "npm run run:daily --workspace @luma-agent/cli"
   },
   "repository": {
     "type": "git",
@@ -25,10 +26,6 @@
     "url": "https://github.com/thunderberry/luma-agent/issues"
   },
   "homepage": "https://github.com/thunderberry/luma-agent#readme",
-  "dependencies": {
-    "googleapis": "^157.0.0",
-    "playwright": "^1.53.2"
-  },
   "devDependencies": {
     "@types/node": "^24.10.0",
     "tsx": "^4.20.6",

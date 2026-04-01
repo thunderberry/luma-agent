@@ -4,6 +4,7 @@ import {
   runCheckEvents,
   runDaily,
   runFetchInvites,
+  runPhase0Fetch,
   runSummarize,
 } from '../pipeline/run-daily.js';
 import { createPathPolicy } from '../pipeline/runtime.js';
@@ -24,17 +25,32 @@ function hasFlag(args: string[], flag: string): boolean {
   return args.includes(flag);
 }
 
+function parseRequiredFlag(args: string[], flag: string): string {
+  const index = args.findIndex((arg) => arg === flag);
+  if (index === -1) {
+    throw new Error(`${flag} flag is required`);
+  }
+
+  const value = args[index + 1];
+  if (!value) {
+    throw new Error(`${flag} flag requires a value`);
+  }
+
+  return value;
+}
+
 function printUsage(): void {
   process.stdout.write(
     [
-      'Usage: node dist/src/cli/index.js <command> [--input PATH] [--manual-auth]',
+      'Usage: node dist/src/cli/index.js <command> [--input PATH] [--url URL] [--manual-auth]',
       '',
       'Commands:',
-      '  auth-gmail      Run one-time Gmail OAuth token setup (auto browser + callback capture)',
+      '  phase0-fetch    Fetch one event page, persist raw HTML + metadata, and stop',
+      '  auth-gmail      Optional one-time Gmail OAuth setup for local-only fetches',
       '  fetch-invites   Fetch invite links from Gmail and persist state',
       '  check-events    Run headless checks from latest or provided invite state',
       '  summarize       Generate summary from latest or provided checks state',
-      '  run-daily       End-to-end run (non-interactive auth expected)',
+      '  run-daily       End-to-end run; --input PATH skips Gmail and uses connector-fed invites',
       '',
     ].join('\n'),
   );
@@ -52,6 +68,13 @@ async function main(): Promise<void> {
   const policy = createPathPolicy(config);
 
   switch (command) {
+    case 'phase0-fetch': {
+      const url = parseRequiredFlag(rest, '--url');
+      const result = await runPhase0Fetch(config, policy, url);
+      process.stdout.write(JSON.stringify(result, null, 2));
+      process.stdout.write('\n');
+      return;
+    }
     case 'auth-gmail': {
       await authorizeGmail(config, policy, {
         preferBrowserLogin: !hasFlag(rest, '--manual-auth'),
@@ -80,7 +103,8 @@ async function main(): Promise<void> {
       return;
     }
     case 'run-daily': {
-      const summary = await runDaily(config, policy);
+      const input = parseInputPath(rest);
+      const summary = await runDaily(config, policy, input);
       process.stdout.write(JSON.stringify(summary, null, 2));
       process.stdout.write('\n');
       return;

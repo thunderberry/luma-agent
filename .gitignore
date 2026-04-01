@@ -1,6 +1,7 @@
 node_modules/
 dist/
 .runtime/
+content/
 .env
 .env.*
 .runtime/oauth/gmail-oauth-client.json

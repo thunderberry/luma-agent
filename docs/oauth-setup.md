@@ -1,4 +1,8 @@
-# Gmail OAuth Setup (Local Only)
+# Gmail OAuth Setup (Optional Local Fallback)
+
+This is only needed if you want the repo itself to fetch Gmail directly.
+
+For Codex/ChatGPT automation, prefer the Gmail connector flow documented in [`docs/codex-automation.md`](./codex-automation.md) so routine runs do not depend on local Gmail OAuth secrets or tokens.
 
 ## 1) Create local OAuth client credentials
 
