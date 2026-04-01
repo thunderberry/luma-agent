@@ -11,11 +11,7 @@
   "scripts": {
     "build": "npm run build --workspace @luma-agent/shared && npm run build --workspace @luma-agent/helper && npm run build --workspace @luma-agent/cli",
     "test": "npm run test --workspace @luma-agent/helper && npm run test --workspace @luma-agent/cli",
-    "sync:gmail": "npm run sync:gmail --workspace @luma-agent/cli",
-    "refresh:events": "npm run refresh:events --workspace @luma-agent/cli",
-    "render:content": "npm run render:content --workspace @luma-agent/cli",
-    "report:upcoming": "npm run report:upcoming --workspace @luma-agent/cli",
-    "run:daily": "npm run run:daily --workspace @luma-agent/cli"
+    "process:invites": "npm run process:invites --workspace @luma-agent/cli --"
   },
   "repository": {
     "type": "git",

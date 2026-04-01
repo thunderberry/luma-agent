@@ -1,6 +1,10 @@
 node_modules/
 dist/
 .runtime/
+.runtime/state/
+.runtime/output/
+.runtime/cache/
+**/.runtime/
 content/
 .vercel/
 .env

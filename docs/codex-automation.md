@@ -1,46 +1,53 @@
 # Codex Automations Prompt
 
-Use this as the task prompt for a Codex App Automation that runs this repo daily with the Gmail connector instead of local Gmail OAuth.
+Use this as the task prompt for a Codex Automation that owns Gmail discovery and agent-authored output.
 
 ```text
-Run the local Luma monitor in /Users/kevinrochowski/Documents/Developer/repos/luma-agent using the Gmail connector for invite discovery.
+Run the Luma invite processing workflow in /Users/kevinrochowski/Documents/Developer/repos/luma-agent.
 
 Requirements:
-- Do not edit repo source files for this run.
+- Do not edit repo source files during the automation run.
 - Do not overwrite .env.
-- Never print OAuth secrets or token contents.
-- Keep browser checks headless only.
-- Keep all temporary/input files inside the repo or /tmp.
+- Never print bearer tokens, OAuth secrets, or token contents.
+- Keep temporary files inside the repo or /tmp.
+- Use the Gmail connector, not local Gmail OAuth.
 
 Execution steps:
 1) cd /Users/kevinrochowski/Documents/Developer/repos/luma-agent
-2) Use the Gmail connector to search for recent Luma invite emails with a query like:
+2) If .runtime/state/message-state.json exists, read it first and use it to avoid refetching already-processed Gmail message IDs.
+3) Use the Gmail connector to search for recent Luma invite emails. Prefer a query like:
    from:(lu.ma OR luma-mail.com) newer_than:90d
-3) Read the matching messages/threads and extract all Luma event URLs.
-4) Write a temporary JSON file at /tmp/luma-invites.json in one of these formats:
+4) Read matching messages and extract Luma event URLs.
+5) Write a temporary JSON file at /tmp/luma-invites.json in one of these formats:
    - ["https://lu.ma/foo", "https://lu.ma/bar"]
    - {"invites":["https://lu.ma/foo"]}
-   - {"invites":[{"messageId":"abc","threadId":"def","receivedAt":"2026-03-31T00:00:00.000Z","subject":"Invite","rawUrl":"https://lu.ma/foo"}]}
-5) Run:
-   npm run run-daily -- --input /tmp/luma-invites.json
-
-Post-run validation:
-- Confirm these files exist under the output directory:
-  - latest.md
-  - latest.json
-- Parse latest.json and report counts: total, open, approval_required, waitlist, closed, unknown, errors.
+   - {"invites":[{"messageId":"abc","threadId":"def","receivedAt":"2026-04-01T00:00:00.000Z","subject":"Invite","sender":"Luma <invite@lu.ma>","rawUrl":"https://lu.ma/foo"}]}
+6) Run:
+   npm run process:invites -- --input /tmp/luma-invites.json
+7) Read these files:
+   - .runtime/state/latest-invites.json
+   - .runtime/output/latest.json
+8) Treat .runtime/output/latest.json as helper facts only. Do not rewrite it into a different JSON shape.
+9) Write .runtime/output/latest.md yourself as the agent. Format it as a concise event digest for the user. For now, use a simple flat structure per event:
+   - title
+   - event URL
+   - start time
+   - city
+   - hosts
+   - ticket price
+   - 1 short “worthwhile” note based only on the visible event facts and description
 
 Output directory rules:
-- Default output directory is repo-local: /Users/kevinrochowski/Documents/Developer/repos/luma-agent/.runtime/output
-- If LUMA_OUTPUT_DIR is explicitly set to a trusted path, use that instead.
+- Default output directory is /Users/kevinrochowski/Documents/Developer/repos/luma-agent/.runtime/output
+- If LUMA_OUTPUT_DIR is explicitly set, use that instead
 
 Error handling:
-- If no Luma messages are found, continue with an empty invites file and report zero counts.
-- If playwright/chromium is missing, run npm run playwright:install once, then retry.
-- If the run fails, include stderr summary and the first actionable fix.
+- If no new Luma messages are found, still write /tmp/luma-invites.json and run the command.
+- If latest.json is empty, write latest.md explaining that no new event URLs were discovered in this run.
+- If the processing command fails, report the stderr summary and the first actionable fix.
 
-Output format:
-- 1 short status line (success/failure).
-- 1 short counts line from latest.json when successful.
-- 1 short line with output directory path.
+Final response format:
+- 1 short status line
+- 1 short line with counts from latest-invites.json: new messages, repeated messages, new event URLs
+- 1 short line with the output directory path
 ```

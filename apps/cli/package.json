@@ -6,14 +6,10 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "sync:gmail": "npm run build --silent && node dist/src/index.js sync:gmail",
-    "refresh:events": "npm run build --silent && node dist/src/index.js refresh:events",
-    "render:content": "npm run build --silent && node dist/src/index.js render:content",
-    "report:upcoming": "npm run build --silent && node dist/src/index.js report:upcoming",
-    "run:daily": "npm run build --silent && node dist/src/index.js run:daily"
+    "process:invites": "npm run build --silent && node dist/src/index.js process-invites"
   },
   "dependencies": {
-    "@luma-agent/shared": "file:../../packages/shared",
-    "googleapis": "^157.0.0"
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@luma-agent/shared": "file:../../packages/shared"
   }
 }

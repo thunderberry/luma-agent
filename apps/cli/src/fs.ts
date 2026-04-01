@@ -53,3 +53,12 @@ export async function listJsonFiles(targetDir: string): Promise<string[]> {
     throw error;
   }
 }
+
+export async function clearDirectory(targetDir: string): Promise<void> {
+  await ensureDir(targetDir);
+  const entries = await fs.readdir(targetDir, { withFileTypes: true });
+  await Promise.all(
+    entries.map((entry) =>
+      fs.rm(path.join(targetDir, entry.name), { recursive: true, force: true })),
+  );
+}
