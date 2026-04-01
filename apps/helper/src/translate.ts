@@ -1,10 +1,12 @@
-import type { FetchLumaEventResponse } from '@luma-agent/shared';
+import type { FetchLumaEventResponse } from './contract.js';
+import {
+  FetchLumaEventRequestSchema,
+} from './contract.js';
 import {
   canonicalizeLumaUrl,
-  FetchLumaEventRequestSchema,
   hashString,
   isoNow,
-} from '@luma-agent/shared';
+} from './shared-utils.js';
 
 import { extractEventPageFactsFromHtml } from './extractor.js';
 import { classifyRegistrationStatus } from './status.js';

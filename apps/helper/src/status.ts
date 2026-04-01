@@ -1,4 +1,4 @@
-import type { RegistrationStatus } from '@luma-agent/shared';
+import type { RegistrationStatus } from './contract.js';
 
 interface Rule {
   status: RegistrationStatus;

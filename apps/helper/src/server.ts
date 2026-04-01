@@ -3,14 +3,14 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import {
   FetchLumaEventRequestSchema,
   FetchLumaEventResponseSchema,
-  isoNow,
-} from '@luma-agent/shared';
+} from './contract.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { z } from 'zod';
 
 import { authenticateHeaders } from './auth.js';
 import { enforceRateLimit } from './rate-limit.js';
+import { isoNow } from './shared-utils.js';
 import { translateLumaEvent } from './translate.js';
 
 type RequestLike = IncomingMessage & { body?: unknown };

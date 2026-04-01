@@ -1,10 +1,10 @@
-import type { LocationType, PriceType } from '@luma-agent/shared';
+import type { LocationType, PriceType } from './contract.js';
 import {
   decodeHtmlEntities,
   limitText,
   normalizeText,
   normalizeWhitespace,
-} from '@luma-agent/shared';
+} from './shared-utils.js';
 
 export interface ExtractedEventPageFacts {
   title?: string;
@@ -300,7 +300,10 @@ export function extractEventPageFactsFromHtml(html: string): ExtractedEventPageF
 
   const organizerNames = [
     ...namesFromEntity(eventNode?.organizer),
-    ...pageText.match(/hosted by\s+([^\n]+)/i)?.slice(1, 2).map((value) => normalizeWhitespace(value)) ?? [],
+    ...(pageText
+      .match(/hosted by\s+([^\n]+)/i)
+      ?.slice(1, 2)
+      .map((value: string) => normalizeWhitespace(value)) ?? []),
   ].filter(Boolean);
 
   const speakerNames = namesFromEntity(eventNode?.performer);
