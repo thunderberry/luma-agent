@@ -2,41 +2,25 @@ import { createHash } from 'node:crypto';
 
 import { z } from 'zod';
 
-export const RegistrationStatusSchema = z.enum([
-  'open',
-  'approval_required',
-  'waitlist',
-  'closed',
-  'unknown',
-]);
-
-export const PriceTypeSchema = z.enum(['free', 'paid', 'unknown']);
-export const LocationTypeSchema = z.enum(['in_person', 'virtual', 'hybrid', 'unknown']);
-
-export type RegistrationStatus = z.infer<typeof RegistrationStatusSchema>;
-export type PriceType = z.infer<typeof PriceTypeSchema>;
-export type LocationType = z.infer<typeof LocationTypeSchema>;
-
 export const FetchLumaEventRequestSchema = z.object({
   url: z.string().url(),
 });
 
 export const FetchLumaEventResponseSchema = z.object({
-  url: z.string().url(),
-  canonical_url: z.string().url(),
-  final_url: z.string().url().optional(),
   title: z.string().optional(),
-  starts_at: z.string().optional(),
+  start_at: z.string().optional(),
+  end_at: z.string().optional(),
+  slug: z.string().optional(),
   city: z.string().optional(),
-  venue: z.string().optional(),
-  location_type: LocationTypeSchema,
-  price_type: PriceTypeSchema,
-  price_text: z.string().optional(),
-  registration_status: RegistrationStatusSchema,
-  organizer_names: z.array(z.string()),
-  speaker_names: z.array(z.string()),
-  description_excerpt: z.string().optional(),
-  popularity_signals: z.array(z.string()),
+  host_names: z.array(z.string()),
+  waitlist: z.string().nullable().optional(),
+  ticket_price: z.string().nullable().optional(),
+  sold_out: z.boolean().optional(),
+  has_available_ticket_types: z.boolean().optional(),
+  category_names: z.array(z.string()),
+  calendar_name: z.string().optional(),
+  calendar_description_short: z.string().optional(),
+  description: z.string().optional(),
   page_fetch_status: z.enum(['ok', 'http_error', 'fetch_error']),
   page_fetch_error: z.string().optional(),
   last_verified_at: z.string(),
@@ -195,7 +179,7 @@ export function eventSlug(record: {
   canonical_url: string;
   helper_response?: FetchLumaEventResponse;
 }): string {
-  const title = record.helper_response?.title;
+  const title = helperEventTitle(record.helper_response);
   if (title) {
     return slugify(title);
   }
@@ -213,12 +197,24 @@ export function eventSlug(record: {
   return 'event';
 }
 
+export function helperEventTitle(event: FetchLumaEventResponse | undefined): string | undefined {
+  return event?.title?.trim() || undefined;
+}
+
+export function helperEventStartAt(event: FetchLumaEventResponse | undefined): string | undefined {
+  return event?.start_at;
+}
+
+export function helperHostNames(event: FetchLumaEventResponse | undefined): string[] {
+  return event?.host_names ?? [];
+}
+
 export function formatCompactLocation(event: FetchLumaEventResponse | undefined): string {
   if (!event) {
     return 'unknown location';
   }
 
-  return [event.venue, event.city].filter(Boolean).join(', ') || 'unknown location';
+  return event.city?.trim() || 'unknown location';
 }
 
 export function limitText(value: string | undefined, maxLength = 240): string | undefined {
@@ -236,11 +232,12 @@ export function computeNextRefreshAt(
   event: FetchLumaEventResponse | undefined,
   now = new Date(),
 ): string | undefined {
-  if (!event?.starts_at) {
+  const startsAtIso = helperEventStartAt(event);
+  if (!startsAtIso) {
     return new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
   }
 
-  const startsAt = new Date(event.starts_at);
+  const startsAt = new Date(startsAtIso);
   if (Number.isNaN(startsAt.getTime())) {
     return new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString();
   }
@@ -271,8 +268,9 @@ export function shouldRefreshCachedEvent(
     return true;
   }
 
-  const startsAt = record.helper_response.starts_at
-    ? new Date(record.helper_response.starts_at)
+  const startsAtIso = helperEventStartAt(record.helper_response);
+  const startsAt = startsAtIso
+    ? new Date(startsAtIso)
     : undefined;
 
   if (!startsAt || Number.isNaN(startsAt.getTime())) {
@@ -294,28 +292,22 @@ export function shouldRefreshCachedEvent(
 export function renderEventMarkdown(record: EventArtifactRecord): string {
   const lines: string[] = [];
   const event = record.helper_response;
-  const title = event?.title ?? record.canonical_url;
+  const title = helperEventTitle(event) ?? record.canonical_url;
 
   lines.push(`# ${title}`);
   lines.push('');
   lines.push(`- URL: ${record.canonical_url}`);
-  lines.push(`- Starts: ${event?.starts_at ?? 'unknown'}`);
-  lines.push(`- Registration: ${event?.registration_status ?? 'unknown'}`);
-  lines.push(`- Price: ${event?.price_type ?? 'unknown'}${event?.price_text ? ` (${event.price_text})` : ''}`);
+  lines.push(`- Starts: ${helperEventStartAt(event) ?? 'unknown'}`);
   lines.push(`- Location: ${formatCompactLocation(event)}`);
-  lines.push(`- Organizers: ${event?.organizer_names.join(', ') || 'unknown'}`);
-  lines.push(`- Speakers: ${event?.speaker_names.join(', ') || 'none listed'}`);
-  if (event?.description_excerpt) {
+  lines.push(`- Hosts: ${helperHostNames(event).join(', ') || 'unknown'}`);
+  lines.push(`- Waitlist: ${event?.waitlist ?? 'none'}`);
+  lines.push(`- Ticket Price: ${event?.ticket_price ?? 'unknown'}`);
+  lines.push(`- Sold Out: ${event?.sold_out ?? 'unknown'}`);
+  lines.push(`- Fetch Status: ${event?.page_fetch_status ?? 'unknown'}`);
+  if (event?.description) {
     lines.push('');
     lines.push('## Description');
-    lines.push(event.description_excerpt);
-  }
-  if (event?.popularity_signals.length) {
-    lines.push('');
-    lines.push('## Signals');
-    for (const signal of event.popularity_signals) {
-      lines.push(`- ${signal}`);
-    }
+    lines.push(event.description);
   }
   if (record.source_messages.length) {
     lines.push('');
@@ -340,18 +332,18 @@ export function renderUpcomingReportMarkdown(report: UpcomingEventsReport): stri
 
   for (const event of report.events) {
     const response = event.helper_response;
-    const title = response?.title ?? event.canonical_url;
+    const title = helperEventTitle(response) ?? event.canonical_url;
     lines.push(`## ${title}`);
     lines.push(`- URL: ${event.canonical_url}`);
-    lines.push(`- Starts: ${response?.starts_at ?? 'unknown'}`);
-    lines.push(`- Registration: ${response?.registration_status ?? 'unknown'}`);
-    lines.push(`- Price: ${response?.price_type ?? 'unknown'}${response?.price_text ? ` (${response.price_text})` : ''}`);
+    lines.push(`- Starts: ${helperEventStartAt(response) ?? 'unknown'}`);
     lines.push(`- Location: ${formatCompactLocation(response)}`);
-    if (response?.description_excerpt) {
-      lines.push(`- Description: ${response.description_excerpt}`);
-    }
-    if (response?.popularity_signals.length) {
-      lines.push(`- Signals: ${response.popularity_signals.join('; ')}`);
+    lines.push(`- Hosts: ${helperHostNames(response).join(', ') || 'unknown'}`);
+    lines.push(`- Waitlist: ${response?.waitlist ?? 'none'}`);
+    lines.push(`- Ticket Price: ${response?.ticket_price ?? 'unknown'}`);
+    lines.push(`- Sold Out: ${response?.sold_out ?? 'unknown'}`);
+    lines.push(`- Fetch Status: ${response?.page_fetch_status ?? 'unknown'}`);
+    if (response?.description) {
+      lines.push(`- Description: ${response.description}`);
     }
     lines.push('');
   }

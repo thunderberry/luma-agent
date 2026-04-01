@@ -14,99 +14,108 @@ function fetchedPage(html: string) {
 }
 
 describe('helper translation', () => {
-  it('extracts a free open event', () => {
+  it('returns the flattened endpoint shape from structured page data', () => {
     const result = translateFetchedPage(
       fetchedPage(`
         <html>
           <head>
-            <title>AI Founder Breakfast</title>
-            <script type="application/ld+json">
+            <script id="__NEXT_DATA__" type="application/json">
               {
-                "@context": "https://schema.org",
-                "@type": "Event",
-                "name": "AI Founder Breakfast",
-                "startDate": "2026-04-05T09:30:00-07:00",
-                "description": "Meet serious founders and investors building in AI.",
-                "eventAttendanceMode": "https://schema.org/OfflineEventAttendanceMode",
-                "isAccessibleForFree": true,
-                "location": {
-                  "@type": "Place",
-                  "name": "Frontier Tower",
-                  "address": {
-                    "@type": "PostalAddress",
-                    "addressLocality": "San Francisco",
-                    "addressRegion": "CA"
+                "props": {
+                  "pageProps": {
+                    "initialData": {
+                      "data": {
+                        "event": {
+                          "name": "AI Founder Breakfast",
+                          "start_at": "2026-04-05T16:30:00.000Z",
+                          "end_at": "2026-04-05T18:00:00.000Z",
+                          "url": "ai-founder-breakfast",
+                          "waitlist_enabled": true,
+                          "waitlist_status": "enabled",
+                          "geo_address_info": {
+                            "city": "San Francisco",
+                            "city_state": "San Francisco, California"
+                          }
+                        },
+                        "hosts": [
+                          { "name": "Founders Bay" }
+                        ],
+                        "registration_questions": [
+                          { "label": "Twitter" }
+                        ],
+                        "ticket_types": [
+                          { "name": "Standard", "type": "free" }
+                        ],
+                        "sold_out": false,
+                        "has_available_ticket_types": true,
+                        "categories": [
+                          { "name": "AI" },
+                          { "name": "Wellness" }
+                        ],
+                        "calendar": {
+                          "name": "Founders Bay",
+                          "description_short": "Founder events in the Bay Area"
+                        },
+                        "description_mirror": {
+                          "type": "doc",
+                          "content": [
+                            {
+                              "type": "paragraph",
+                              "content": [
+                                { "type": "text", "text": "A breakfast for AI founders." }
+                              ]
+                            },
+                            {
+                              "type": "paragraph",
+                              "content": [
+                                { "type": "text", "text": "Coffee and conversation." }
+                              ]
+                            }
+                          ]
+                        }
+                      }
+                    }
                   }
-                },
-                "organizer": {
-                  "@type": "Organization",
-                  "name": "Founders Bay"
                 }
               }
             </script>
           </head>
-          <body>
-            <h1>AI Founder Breakfast</h1>
-            <button>Register</button>
-            <div>245 attending</div>
-          </body>
+          <body></body>
         </html>
       `),
     );
 
-    expect(result.price_type).toBe('free');
-    expect(result.registration_status).toBe('open');
+    expect(result.page_fetch_status).toBe('ok');
+    expect(result.title).toBe('AI Founder Breakfast');
+    expect(result.start_at).toBe('2026-04-05T16:30:00.000Z');
+    expect(result.end_at).toBe('2026-04-05T18:00:00.000Z');
+    expect(result.slug).toBe('ai-founder-breakfast');
     expect(result.city).toBe('San Francisco');
+    expect(result.host_names).toEqual(['Founders Bay']);
+    expect(result.waitlist).toBe('enabled');
+    expect(result.ticket_price).toBe('free');
+    expect(result.sold_out).toBe(false);
+    expect(result.has_available_ticket_types).toBe(true);
+    expect(result.category_names).toEqual(['AI', 'Wellness']);
+    expect(result.calendar_name).toBe('Founders Bay');
+    expect(result.calendar_description_short).toBe('Founder events in the Bay Area');
+    expect(result.description).toBe('A breakfast for AI founders.\n\nCoffee and conversation.');
   });
 
-  it('extracts a paid event', () => {
+  it('returns only metadata and empty arrays when structured data is missing', () => {
     const result = translateFetchedPage(
       fetchedPage(`
         <html>
-          <head>
-            <script type="application/ld+json">
-              {
-                "@context": "https://schema.org",
-                "@type": "Event",
-                "name": "Applied AI Summit",
-                "offers": {
-                  "@type": "Offer",
-                  "price": "149",
-                  "priceCurrency": "USD"
-                }
-              }
-            </script>
-          </head>
-          <body><button>Register</button></body>
+          <head></head>
+          <body><h1>No embedded payload</h1></body>
         </html>
       `),
     );
 
-    expect(result.price_type).toBe('paid');
-    expect(result.price_text).toBe('USD 149');
-  });
-
-  it('classifies waitlist events', () => {
-    const result = translateFetchedPage(
-      fetchedPage('<html><body><button>Join waitlist</button></body></html>'),
-    );
-
-    expect(result.registration_status).toBe('waitlist');
-  });
-
-  it('classifies approval-required events', () => {
-    const result = translateFetchedPage(
-      fetchedPage('<html><body><button>Request to join</button></body></html>'),
-    );
-
-    expect(result.registration_status).toBe('approval_required');
-  });
-
-  it('classifies closed events', () => {
-    const result = translateFetchedPage(
-      fetchedPage('<html><body><div>Registration closed</div></body></html>'),
-    );
-
-    expect(result.registration_status).toBe('closed');
+    expect(result.page_fetch_status).toBe('ok');
+    expect(result.host_names).toEqual([]);
+    expect(result.category_names).toEqual([]);
+    expect(result.title).toBeUndefined();
+    expect(result.description).toBeUndefined();
   });
 });

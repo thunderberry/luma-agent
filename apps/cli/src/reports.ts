@@ -2,6 +2,7 @@ import path from 'node:path';
 
 import {
   eventSlug,
+  helperEventStartAt,
   isUpcoming,
   localDateStamp,
   renderEventMarkdown,
@@ -69,13 +70,15 @@ export async function writeUpcomingReport(
   await ensureDir(config.contentReportsDir);
 
   const artifacts = mergeArtifacts(events, messages)
-    .filter((artifact) => isUpcoming(artifact.helper_response?.starts_at))
+    .filter((artifact) => isUpcoming(helperEventStartAt(artifact.helper_response)))
     .sort((a, b) => {
-      const aTime = a.helper_response?.starts_at
-        ? new Date(a.helper_response.starts_at).getTime()
+      const aStartsAt = helperEventStartAt(a.helper_response);
+      const bStartsAt = helperEventStartAt(b.helper_response);
+      const aTime = aStartsAt
+        ? new Date(aStartsAt).getTime()
         : Number.MAX_SAFE_INTEGER;
-      const bTime = b.helper_response?.starts_at
-        ? new Date(b.helper_response.starts_at).getTime()
+      const bTime = bStartsAt
+        ? new Date(bStartsAt).getTime()
         : Number.MAX_SAFE_INTEGER;
       return aTime - bTime;
     });

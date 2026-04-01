@@ -1,40 +1,24 @@
 import { z } from 'zod';
 
-export const RegistrationStatusSchema = z.enum([
-  'open',
-  'approval_required',
-  'waitlist',
-  'closed',
-  'unknown',
-]);
-
-export const PriceTypeSchema = z.enum(['free', 'paid', 'unknown']);
-export const LocationTypeSchema = z.enum(['in_person', 'virtual', 'hybrid', 'unknown']);
-
-export type RegistrationStatus = z.infer<typeof RegistrationStatusSchema>;
-export type PriceType = z.infer<typeof PriceTypeSchema>;
-export type LocationType = z.infer<typeof LocationTypeSchema>;
-
 export const FetchLumaEventRequestSchema = z.object({
   url: z.string().url(),
 });
 
 export const FetchLumaEventResponseSchema = z.object({
-  url: z.string().url(),
-  canonical_url: z.string().url(),
-  final_url: z.string().url().optional(),
   title: z.string().optional(),
-  starts_at: z.string().optional(),
+  start_at: z.string().optional(),
+  end_at: z.string().optional(),
+  slug: z.string().optional(),
   city: z.string().optional(),
-  venue: z.string().optional(),
-  location_type: LocationTypeSchema,
-  price_type: PriceTypeSchema,
-  price_text: z.string().optional(),
-  registration_status: RegistrationStatusSchema,
-  organizer_names: z.array(z.string()),
-  speaker_names: z.array(z.string()),
-  description_excerpt: z.string().optional(),
-  popularity_signals: z.array(z.string()),
+  host_names: z.array(z.string()),
+  waitlist: z.string().nullable().optional(),
+  ticket_price: z.string().nullable().optional(),
+  sold_out: z.boolean().optional(),
+  has_available_ticket_types: z.boolean().optional(),
+  category_names: z.array(z.string()),
+  calendar_name: z.string().optional(),
+  calendar_description_short: z.string().optional(),
+  description: z.string().optional(),
   page_fetch_status: z.enum(['ok', 'http_error', 'fetch_error']),
   page_fetch_error: z.string().optional(),
   last_verified_at: z.string(),

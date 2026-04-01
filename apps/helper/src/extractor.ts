@@ -1,331 +1,226 @@
-import type { LocationType, PriceType } from './contract.js';
-import {
-  decodeHtmlEntities,
-  limitText,
-  normalizeText,
-  normalizeWhitespace,
-} from './shared-utils.js';
+import type { z } from 'zod';
 
-export interface ExtractedEventPageFacts {
-  title?: string;
-  starts_at?: string;
-  city?: string;
-  venue?: string;
-  location_type: LocationType;
-  price_type: PriceType;
-  price_text?: string;
-  organizer_names: string[];
-  speaker_names: string[];
-  description_excerpt?: string;
-  popularity_signals: string[];
-  page_text: string;
-  cta_texts: string[];
-}
+import { FetchLumaEventResponseSchema } from './contract.js';
+import { normalizeWhitespace } from './shared-utils.js';
 
-interface EventNode {
-  name?: string;
-  startDate?: string;
-  description?: string;
-  organizer?: { name?: string } | Array<{ name?: string }>;
-  performer?: { name?: string } | Array<{ name?: string }>;
-  location?: unknown;
-  offers?: unknown;
-  eventAttendanceMode?: string;
-  isAccessibleForFree?: boolean;
-}
+type ExtractedStructuredFacts = Pick<
+  z.infer<typeof FetchLumaEventResponseSchema>,
+  | 'title'
+  | 'start_at'
+  | 'end_at'
+  | 'slug'
+  | 'city'
+  | 'host_names'
+  | 'waitlist'
+  | 'ticket_price'
+  | 'sold_out'
+  | 'has_available_ticket_types'
+  | 'category_names'
+  | 'calendar_name'
+  | 'calendar_description_short'
+  | 'description'
+>;
 
-function extractTagTexts(html: string, tagNames: string[]): string[] {
-  const tagPattern = tagNames.join('|');
-  const regex = new RegExp(`<(${tagPattern})\\b[^>]*>([\\s\\S]*?)<\\/\\1>`, 'gi');
-  const texts: string[] = [];
-  let match: RegExpExecArray | null;
-  while ((match = regex.exec(html)) !== null) {
-    const text = normalizeText(match[2] ?? '');
-    if (text) {
-      texts.push(text);
-    }
-  }
-  return texts;
-}
-
-function extractMetaContent(html: string, key: string): string | undefined {
-  const regex = new RegExp(
-    `<meta[^>]+(?:name|property)=["']${key}["'][^>]+content=["']([\\s\\S]*?)["'][^>]*>`,
-    'i',
+function parseNextDataPayload(html: string): unknown {
+  const match = html.match(
+    /<script id=["']__NEXT_DATA__["'] type=["']application\/json["']>([\s\S]*?)<\/script>/i,
   );
-  const match = regex.exec(html);
-  return match?.[1] ? decodeHtmlEntities(match[1]).trim() : undefined;
-}
-
-function extractJsonLdNodes(html: string): unknown[] {
-  const regex = /<script[^>]+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
-  const parsed: unknown[] = [];
-  let match: RegExpExecArray | null;
-  while ((match = regex.exec(html)) !== null) {
-    const raw = match[1]?.trim();
-    if (!raw) {
-      continue;
-    }
-    try {
-      parsed.push(JSON.parse(raw));
-    } catch {
-      continue;
-    }
-  }
-  return parsed;
-}
-
-function findEventNode(node: unknown): EventNode | undefined {
-  if (!node || typeof node !== 'object') {
+  if (!match?.[1]) {
     return undefined;
+  }
+
+  try {
+    const nextData = JSON.parse(match[1]);
+    return nextData?.props?.pageProps?.initialData?.data;
+  } catch {
+    return undefined;
+  }
+}
+
+function plainTextFromDescriptionNode(node: unknown): string {
+  if (!node || typeof node !== 'object') {
+    return '';
   }
 
   if (Array.isArray(node)) {
-    for (const item of node) {
-      const found = findEventNode(item);
-      if (found) {
-        return found;
-      }
-    }
-    return undefined;
+    return node.map((item) => plainTextFromDescriptionNode(item)).filter(Boolean).join('\n');
   }
 
   const record = node as Record<string, unknown>;
-  const typeValue = record['@type'];
-  if (typeValue === 'Event' || (Array.isArray(typeValue) && typeValue.includes('Event'))) {
-    return record as EventNode;
+  if (typeof record.text === 'string') {
+    return record.text;
   }
 
-  for (const value of Object.values(record)) {
-    const found = findEventNode(value);
-    if (found) {
-      return found;
-    }
+  const content = Array.isArray(record.content) ? record.content : [];
+  const inner = content.map((item) => plainTextFromDescriptionNode(item)).filter(Boolean).join('');
+  if (!inner) {
+    return '';
   }
 
-  return undefined;
+  if (record.type === 'paragraph' || record.type === 'blockquote' || record.type === 'heading') {
+    return `${inner}\n\n`;
+  }
+
+  if (record.type === 'hard_break') {
+    return '\n';
+  }
+
+  return inner;
 }
 
-function namesFromEntity(value: unknown): string[] {
-  const candidates = Array.isArray(value) ? value : value ? [value] : [];
-  return candidates
-    .flatMap((candidate) => {
-      if (!candidate || typeof candidate !== 'object') {
-        return [];
-      }
-      const name = (candidate as Record<string, unknown>).name;
-      return typeof name === 'string' && name.trim() ? [name.trim()] : [];
-    });
+function extractDescription(value: unknown): string | undefined {
+  const text = normalizeWhitespace(plainTextFromDescriptionNode(value));
+  return text || undefined;
 }
 
-function parseDate(value: string | undefined): string | undefined {
-  if (!value) {
-    return undefined;
-  }
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) {
-    return undefined;
-  }
-  return parsed.toISOString();
-}
-
-function inferLocationType(text: string | undefined, eventNode: EventNode | undefined): LocationType {
-  const normalizedText = text?.toLowerCase() ?? '';
-  const attendanceMode = eventNode?.eventAttendanceMode?.toLowerCase() ?? '';
-  if (attendanceMode.includes('mixedeventattendance') || /\bhybrid\b/.test(normalizedText)) {
-    return 'hybrid';
-  }
-  if (
-    attendanceMode.includes('onlineeventattendance')
-    || /\b(zoom|virtual|online|google meet|webinar|livestream)\b/.test(normalizedText)
-  ) {
-    return 'virtual';
-  }
-  if (
-    attendanceMode.includes('offlineeventattendance')
-    || /\b(in person|location: in person)\b/.test(normalizedText)
-  ) {
-    return 'in_person';
-  }
-  return 'unknown';
-}
-
-function extractLocationFacts(
-  eventNode: EventNode | undefined,
-  pageText: string,
-): Pick<ExtractedEventPageFacts, 'location_type' | 'city' | 'venue'> {
-  const facts: Pick<ExtractedEventPageFacts, 'location_type' | 'city' | 'venue'> = {
-    location_type: inferLocationType(pageText, eventNode),
-  };
-
-  if (eventNode?.location && typeof eventNode.location === 'object') {
-    const locationRecord = eventNode.location as Record<string, unknown>;
-    const venue =
-      typeof locationRecord.name === 'string' ? locationRecord.name.trim() : undefined;
-    const address =
-      locationRecord.address && typeof locationRecord.address === 'object'
-        ? (locationRecord.address as Record<string, unknown>)
-        : undefined;
-    const city =
-      typeof address?.addressLocality === 'string'
-        ? address.addressLocality.trim()
-        : undefined;
-
-    if (venue) {
-      facts.venue = venue;
-    }
-    if (city) {
-      facts.city = city;
-    }
-    const locationText = [venue, city].filter(Boolean).join(', ');
-    if (locationText) {
-      facts.location_type = inferLocationType(locationText, eventNode);
-    }
-  }
-
-  if (!facts.city) {
-    const cityMatch = pageText.match(
-      /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*),\s(?:California|New York|Washington|Texas|Florida|Illinois|Massachusetts|[A-Z]{2})\b/,
-    );
-    if (cityMatch?.[1]) {
-      facts.city = cityMatch[1];
-    }
-  }
-
-  return facts;
-}
-
-function extractPriceFacts(
-  eventNode: EventNode | undefined,
-  pageText: string,
-): Pick<ExtractedEventPageFacts, 'price_type' | 'price_text'> {
-  const text = pageText.toLowerCase();
-
-  if (eventNode?.isAccessibleForFree === true || /\bfree\b/.test(text)) {
-    return {
-      price_type: 'free',
-      price_text: 'Free',
-    };
-  }
-
-  const offers = eventNode?.offers;
-  const offerList = Array.isArray(offers) ? offers : offers ? [offers] : [];
-  for (const offer of offerList) {
-    if (!offer || typeof offer !== 'object') {
+function formatTicketPrice(payload: Record<string, unknown>): string | null | undefined {
+  const ticketTypes = Array.isArray(payload.ticket_types) ? payload.ticket_types : [];
+  for (const ticketType of ticketTypes) {
+    if (!ticketType || typeof ticketType !== 'object') {
       continue;
     }
-    const record = offer as Record<string, unknown>;
-    const rawPrice = record.price;
-    const priceCurrency =
-      typeof record.priceCurrency === 'string' ? record.priceCurrency.trim() : undefined;
-    if (typeof rawPrice === 'number' || typeof rawPrice === 'string') {
-      const normalized = String(rawPrice).trim();
-      if (normalized === '0' || normalized === '0.0' || normalized === '0.00') {
-        return {
-          price_type: 'free',
-          price_text: 'Free',
-        };
+
+    const record = ticketType as Record<string, unknown>;
+    if (record.type === 'free') {
+      return 'free';
+    }
+
+    const cents = typeof record.cents === 'number' ? record.cents : null;
+    const currency = typeof record.currency === 'string' ? record.currency : null;
+    if (cents !== null) {
+      const amount = (cents / 100).toFixed(2).replace(/\.00$/, '');
+      return currency === 'USD' || currency === null ? `$${amount}` : `${currency} ${amount}`;
+    }
+  }
+
+  const ticketInfo =
+    payload.ticket_info && typeof payload.ticket_info === 'object'
+      ? (payload.ticket_info as Record<string, unknown>)
+      : undefined;
+  if (!ticketInfo) {
+    return undefined;
+  }
+
+  if (ticketInfo.is_free === true) {
+    return 'free';
+  }
+
+  const price = ticketInfo.price;
+  if (typeof price === 'string' || typeof price === 'number') {
+    return String(price);
+  }
+
+  const maxPrice = ticketInfo.max_price;
+  if (typeof maxPrice === 'string' || typeof maxPrice === 'number') {
+    return String(maxPrice);
+  }
+
+  return null;
+}
+
+function extractWaitlist(payload: Record<string, unknown>): string | null | undefined {
+  const event =
+    payload.event && typeof payload.event === 'object'
+      ? (payload.event as Record<string, unknown>)
+      : undefined;
+
+  const waitlistStatus = typeof event?.waitlist_status === 'string' ? event.waitlist_status : undefined;
+  if (waitlistStatus) {
+    return waitlistStatus;
+  }
+
+  if (payload.waitlist_active === true) {
+    return 'active';
+  }
+
+  if (event?.waitlist_enabled === true) {
+    return 'enabled';
+  }
+
+  return null;
+}
+
+export function extractStructuredPageDataFromHtml(html: string): ExtractedStructuredFacts | undefined {
+  const payload = parseNextDataPayload(html);
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return undefined;
+  }
+
+  const record = payload as Record<string, unknown>;
+  const event =
+    record.event && typeof record.event === 'object'
+      ? (record.event as Record<string, unknown>)
+      : undefined;
+  const geoAddressInfo =
+    event?.geo_address_info && typeof event.geo_address_info === 'object'
+      ? (event.geo_address_info as Record<string, unknown>)
+      : undefined;
+  const calendar =
+    record.calendar && typeof record.calendar === 'object'
+      ? (record.calendar as Record<string, unknown>)
+      : undefined;
+  const hosts = Array.isArray(record.hosts) ? record.hosts : [];
+  const categories = Array.isArray(record.categories) ? record.categories : [];
+
+  const extracted: ExtractedStructuredFacts = {
+    host_names: hosts.flatMap((host) => {
+      if (!host || typeof host !== 'object') {
+        return [];
       }
-      return {
-        price_type: 'paid',
-        price_text: priceCurrency ? `${priceCurrency} ${normalized}` : normalized,
-      };
-    }
-  }
-
-  const paidMatch = pageText.match(/(?:\$|usd\s*)\d[\d,.]*/i);
-  if (paidMatch?.[0]) {
-    return {
-      price_type: 'paid',
-      price_text: paidMatch[0],
-    };
-  }
-
-  return {
-    price_type: 'unknown',
+      const name = (host as Record<string, unknown>).name;
+      return typeof name === 'string' && name.trim() ? [name.trim()] : [];
+    }),
+    category_names: categories.flatMap((category) => {
+      if (!category || typeof category !== 'object') {
+        return [];
+      }
+      const name = (category as Record<string, unknown>).name;
+      return typeof name === 'string' && name.trim() ? [name.trim()] : [];
+    }),
   };
-}
 
-function extractPopularitySignals(pageText: string): string[] {
-  const signals = new Set<string>();
-  const patterns = [
-    /\b\d{1,3}(?:,\d{3})*\+?\s+(?:attending|attendees|going|people)\b/gi,
-    /\b\d+\s+spots?\s+left\b/gi,
-    /\bhosted by\s+[^\n]+/gi,
-    /\b(waitlist|sold out|registration closed)\b/gi,
-  ];
-
-  for (const pattern of patterns) {
-    const matches = pageText.match(pattern);
-    for (const match of matches ?? []) {
-      signals.add(match.trim());
-    }
+  if (typeof event?.name === 'string' && event.name.trim()) {
+    extracted.title = event.name.trim();
+  }
+  if (typeof event?.start_at === 'string' && event.start_at.trim()) {
+    extracted.start_at = event.start_at.trim();
+  }
+  if (typeof event?.end_at === 'string' && event.end_at.trim()) {
+    extracted.end_at = event.end_at.trim();
+  }
+  if (typeof event?.url === 'string' && event.url.trim()) {
+    extracted.slug = event.url.trim();
+  }
+  if (typeof geoAddressInfo?.city === 'string' && geoAddressInfo.city.trim()) {
+    extracted.city = geoAddressInfo.city.trim();
+  }
+  const waitlist = extractWaitlist(record);
+  if (waitlist !== undefined) {
+    extracted.waitlist = waitlist;
+  }
+  const ticketPrice = formatTicketPrice(record);
+  if (ticketPrice !== undefined) {
+    extracted.ticket_price = ticketPrice;
+  }
+  if (typeof record.sold_out === 'boolean') {
+    extracted.sold_out = record.sold_out;
+  }
+  if (typeof record.has_available_ticket_types === 'boolean') {
+    extracted.has_available_ticket_types = record.has_available_ticket_types;
+  }
+  if (typeof calendar?.name === 'string' && calendar.name.trim()) {
+    extracted.calendar_name = calendar.name.trim();
+  }
+  if (
+    typeof calendar?.description_short === 'string'
+    && calendar.description_short.trim()
+  ) {
+    extracted.calendar_description_short = calendar.description_short.trim();
+  }
+  const description = extractDescription(record.description_mirror);
+  if (description) {
+    extracted.description = description;
   }
 
-  return [...signals].slice(0, 8);
-}
-
-function firstDefined(...values: Array<string | undefined>): string | undefined {
-  return values.find((value) => value && value.trim());
-}
-
-export function extractEventPageFactsFromHtml(html: string): ExtractedEventPageFacts {
-  const bodyHtml = html
-    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<style[\s\S]*?<\/style>/gi, ' ');
-  const pageText = normalizeText(bodyHtml);
-  const ctaTexts = extractTagTexts(bodyHtml, ['a', 'button']).slice(0, 150);
-  const jsonLdNodes = extractJsonLdNodes(html);
-  const eventNode = jsonLdNodes.map((node) => findEventNode(node)).find(Boolean);
-
-  const title = firstDefined(
-    eventNode?.name?.trim(),
-    extractTagTexts(bodyHtml, ['h1'])[0],
-    extractMetaContent(html, 'og:title'),
-    extractMetaContent(html, 'twitter:title'),
-    (() => {
-      const match = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-      return match?.[1] ? normalizeText(match[1]) : undefined;
-    })(),
-  );
-
-  const descriptionExcerpt = limitText(
-    firstDefined(
-      eventNode?.description?.trim(),
-      extractMetaContent(html, 'description'),
-      extractMetaContent(html, 'og:description'),
-      pageText.slice(0, 280),
-    ),
-  );
-
-  const organizerNames = [
-    ...namesFromEntity(eventNode?.organizer),
-    ...(pageText
-      .match(/hosted by\s+([^\n]+)/i)
-      ?.slice(1, 2)
-      .map((value: string) => normalizeWhitespace(value)) ?? []),
-  ].filter(Boolean);
-
-  const speakerNames = namesFromEntity(eventNode?.performer);
-
-  const locationFacts = extractLocationFacts(eventNode, pageText);
-  const priceFacts = extractPriceFacts(eventNode, pageText);
-
-  const startsAt = parseDate(eventNode?.startDate);
-
-  return {
-    ...(title ? { title } : {}),
-    ...(startsAt ? { starts_at: startsAt } : {}),
-    ...(locationFacts.city ? { city: locationFacts.city } : {}),
-    ...(locationFacts.venue ? { venue: locationFacts.venue } : {}),
-    location_type: locationFacts.location_type,
-    price_type: priceFacts.price_type,
-    ...(priceFacts.price_text ? { price_text: priceFacts.price_text } : {}),
-    organizer_names: [...new Set(organizerNames)],
-    speaker_names: [...new Set(speakerNames)],
-    ...(descriptionExcerpt ? { description_excerpt: descriptionExcerpt } : {}),
-    popularity_signals: extractPopularitySignals(pageText),
-    page_text: pageText,
-    cta_texts: ctaTexts,
-  };
+  return extracted;
 }
