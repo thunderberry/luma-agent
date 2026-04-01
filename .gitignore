@@ -2,6 +2,7 @@ node_modules/
 dist/
 .runtime/
 content/
+.vercel/
 .env
 .env.*
 .runtime/oauth/gmail-oauth-client.json
